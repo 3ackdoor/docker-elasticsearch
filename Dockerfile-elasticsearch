@@ -1,0 +1,43 @@
+FROM --platform=linux/arm64 azul/zulu-openjdk-alpine:8-jre-latest AS builder
+
+ENV VERSION 6.8.4
+ENV COMPONENT elasticsearch
+ENV COMPONENT_VERSION "${COMPONENT}-${VERSION}"
+ENV DOWNLOAD_URL "https://artifacts.elastic.co/downloads/elasticsearch/${COMPONENT_VERSION}.tar.gz"
+
+WORKDIR /usr
+
+# Download extras
+RUN apk update
+RUN apk add --no-cache curl bash nano shadow libc6-compat
+
+SHELL ["/bin/bash", "-c"]
+
+# add a non root user
+RUN useradd -m elasticuser
+
+# Download elasticsearch
+RUN curl -L -O "${DOWNLOAD_URL}"
+RUN tar -xvf "${COMPONENT_VERSION}.tar.gz"
+
+# Add config
+ADD elasticsearch.yml "/usr/${COMPONENT_VERSION}/config/elasticsearch.yml"
+
+RUN chown -R elasticuser: .
+USER elasticuser
+
+ENV JAVA_HOME=/usr/bin/java
+ENV discovery.type=single-node
+ENV xpack.security.enabled: false
+ENV xpack.ml.enabled: false
+
+RUN mv "${COMPONENT_VERSION}" "/usr/share/${COMPONENT}"
+RUN chown -R elasticuser: "/usr/share/${COMPONENT}"
+
+FROM scratch
+COPY --from=builder . .
+WORKDIR /usr/share/elasticsearch/bin
+USER elasticuser
+
+EXPOSE 9200 9300
+CMD ./elasticsearch
